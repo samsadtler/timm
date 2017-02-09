@@ -1,27 +1,64 @@
-int incomingByte = 0;
+#include "Particle.h"
+#include "papertrail.h"
 
-void setup(){
-   Serial.begin(9600);
-   Serial1.begin(9600);
-   while(!Serial.isConnected()) // wait for Host to open serial port
-    Particle.process();
+const unsigned long SEND_INTERVAL_MS = 12000;
+const size_t READ_BUF_SIZE = 18;
 
-  Serial.println("Hello there!");
-}
+PapertrailLogHandler papertailHandler("logs5.papertrailapp.com", 54518, "timm");
 
-void serialEvent(){
-    char c = Serial.read();
-    Serial.print(c);
+// Forward declarations
+void processBuffer();
+
+// Global variables
+int counter = 0;
+char readSignal = 'R';
+char tareSignal = 'T';
+char zeroSignal = 'Z';
+char grossSignal = 'G';
+char signals [] = {readSignal};
+	String tempMessage = "trash data";
+unsigned long lastSend = 0;
+int i;
+char readBuf[READ_BUF_SIZE];
+size_t readBufOffset = 0;
+
+void setup() {
+
+	USBSerial1.begin();
+	Serial1.begin(9600, SERIAL_8N1);
+	Serial1.write(zeroSignal);
+	Log.info("Weight Zeroed on Startup --> %d", zeroSignal);
 }
 
 void loop() {
-  // send data only when you receive data:
-  if (Serial1.available() > 0) {
-    // read the incoming byte:
-    incomingByte = Serial.read();
+	if (millis() - lastSend >= SEND_INTERVAL_MS) {
+		lastSend = millis();
+		Serial1.write(signals[0]);
+		/*Log.info("serial1 value written --> %d", signals[0]);*/
+		/*Particle.publish("googleDocs", "{\"my-name\":\"" + tempMessage + "\"}", 60, PRIVATE);*/
+	}
 
-    // say what you got:
-    Serial.print("I received from Scale: ");
-    Serial1.println(incomingByte, DEC);
-  }
+	// Read data from serial
+	while(Serial1.available()) {
+		if (readBufOffset < READ_BUF_SIZE) {
+			char c = Serial1.read();
+			if (c != '\r' && c!= '\n') {
+				readBuf[readBufOffset++] = c;
+			}
+			else {
+				readBuf[readBufOffset] = 0;
+				processBuffer();
+				readBufOffset = 0;
+			}
+		}
+		else {
+			Log.error("readBuf overflow, emptying buffer");
+			readBufOffset = 0;
+		}
+	}
+
+}
+
+void processBuffer() {
+	Log.info("Received from Optima: %s", readBuf);
 }
