@@ -1,14 +1,14 @@
 #include "Particle.h"
 #include "papertrail.h"
 
-const unsigned long SEND_INTERVAL_MS = 12000;
+const unsigned long SEND_INTERVAL_MS = 22000;
 const size_t READ_BUF_SIZE = 18;
 
 PapertrailLogHandler papertailHandler("logs5.papertrailapp.com", 54518, "timm");
 
 // Forward declarations
 void processBuffer();
-
+void webHook();
 // Global variables
 int counter = 0;
 char readSignal = 'R';
@@ -34,8 +34,7 @@ void loop() {
 	if (millis() - lastSend >= SEND_INTERVAL_MS) {
 		lastSend = millis();
 		Serial1.write(signals[0]);
-		/*Log.info("serial1 value written --> %d", signals[0]);*/
-		/*Particle.publish("googleDocs", "{\"my-name\":\"" + tempMessage + "\"}", 60, PRIVATE);*/
+
 	}
 
 	// Read data from serial
@@ -58,7 +57,18 @@ void loop() {
 	}
 
 }
+void webHook(){
+		int weight = 104;
+		int change = 5;
+		int tare = 100;
+		String form = String::format(
+			"{\"weight\":\"%d\",\"change\":\"%d\",\"tare\":\"%d\"}",
+			 weight, change, tare
+		);
+		Particle.publish("google-docs", form, 60, PRIVATE);
+}
 
 void processBuffer() {
 	Log.info("Received from Optima: %s", readBuf);
+	webHook();
 }
