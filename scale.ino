@@ -9,12 +9,14 @@ PapertrailLogHandler papertailHandler("logs5.papertrailapp.com", 54518, "timm");
 // Forward declarations
 void processBuffer();
 void webHook();
+void tareFunction();
 // Global variables
 int counter = 0;
 char readSignal = 'R';
 char tareSignal = 'T';
 char zeroSignal = 'Z';
 char grossSignal = 'G';
+bool tare = false;
 char signals [] = {readSignal};
 	String tempMessage = "trash data";
 unsigned long lastSend = 0;
@@ -26,8 +28,8 @@ void setup() {
 
 	USBSerial1.begin();
 	Serial1.begin(9600, SERIAL_8N1);
-	Serial1.write(zeroSignal);
-	Log.info("Weight Zeroed on Startup --> %d", zeroSignal);
+	tareFunction();
+	Log.info("Weight Zeroed on Startup --> %d", tareSignal);
 }
 
 void loop() {
@@ -57,10 +59,16 @@ void loop() {
 	}
 
 }
-void webHook(){
-		int weight = 104;
+void tareFunction(){
+	Serial1.write(tareSignal);
+	if (tare){ tare = false;}
+	else {tare = true;}
+
+};
+
+void webHook(int weight){
 		int change = 5;
-		int tare = 100;
+
 		String form = String::format(
 			"{\"weight\":\"%d\",\"change\":\"%d\",\"tare\":\"%d\"}",
 			 weight, change, tare
@@ -70,5 +78,8 @@ void webHook(){
 
 void processBuffer() {
 	Log.info("Received from Optima: %s", readBuf);
-	webHook();
+	String buffer = String(readBuf);
+	int weight = atoi(buffer.substring(0,8));
+
+	webHook(weight);
 }
