@@ -1,11 +1,16 @@
+
+// includes the papertrail and soft http libraries to generate remote logs and an onsite GUI respectively
 #include "Particle.h"
 #include "papertrail.h"
 #include "softap_http.h"
 
+// Uses the external antenna or internal - whichever is best
 STARTUP(WiFi.selectAntenna(ANT_AUTO));
-PapertrailLogHandler papertailHandler("logs5.papertrailapp.com", 54518, "timm");
 
-
+// start remote logger
+/*PapertrailLogHandler papertailHandler("logs5.papertrailapp.com", 54518, "timm");*/
+PapertrailLogHandler papertailHandler("logs5.papertrailapp.com", 54518, "tester");
+// Create a GUI for connecting to networks when the setup button is held
 struct Page
 {
     const char* url;
@@ -87,7 +92,13 @@ STARTUP(softap_set_application_page_handler(myPage, nullptr));
 /*void processBuffer();*/
 void webHook();
 void tareFunction();
+void connectionIssues();
+void saveToTheEEPROM();
+int getToTheEEPROM();
 int changeTracker();
+
+// Start custom code
+
 // Global variables
 const unsigned long SEND_INTERVAL_MS = 3200;
 const size_t READ_BUF_SIZE = 18;
@@ -99,29 +110,38 @@ char grossSignal = 'G';
 bool tare = false;
 bool change = false;
 char signals [] = {readSignal};
-String tempMessage = "trash data";
 unsigned long lastSend = 0;
 int counter = 0;
 int i;
 int delta = 0;
 int perviousWeight = 0;
 int weight = 454545;
+int disconnectEEPROMMemoryValue = 20;
+int lastWeightEEPROMMemoryValue = 10;
+int disconnectCounter = 0;
 char readBuf[READ_BUF_SIZE];
 size_t readBufOffset = 0;
+
+
 
 void setup() {
 
 	USBSerial1.begin();
 	Serial1.begin(9600, SERIAL_8N1);
 	/*tareFunction();*/
+  weight = getToTheEEPROM(lastWeightEEPROMMemoryValue);
+  int lastDisconnectCounterValue = getToTheEEPROM(disconnectEEPROMMemoryValue);
+  Log.info("last disconnection counter %i", lastDisconnectCounterValue);
+  Log.info("last weight value %i", weight);
 	/*Log.info("Weight Zeroed on Startup --> %d", tareSignal);*/
 }
 
+// checking for serial data and writing it periodically
 void loop() {
 	if (millis() - lastSend >= SEND_INTERVAL_MS) {
 		lastSend = millis();
 		Serial1.write(signals[0]);
-
+    connectionIssues();
 	}
 
 	// Read data from serial
@@ -144,13 +164,6 @@ void loop() {
 	}
 
 }
-void tareFunction(){
-	Serial1.write(tareSignal);
-	if (tare){ tare = false;}
-	else {tare = true;}
-
-};
-
 
 void processBuffer() {
   	/*Log.info("Received from Optima: %s", readBuf);*/
@@ -162,9 +175,25 @@ void processBuffer() {
 			if(trimSubString.length() > 0 ){
 	 			weight = trimSubString.toInt();
 		 		if(changeTracker()){
+            saveToTheEEPROM( lastWeightEEPROMMemoryValue, weight);
 						webHook();
-
 				};
+		    }
+}
+
+  void processBuffer() {
+  	/*Log.info("Received from Optima: %s", readBuf);*/
+
+
+			String buffer = readBuf;
+			String subString = buffer.substring(2,10);
+			String trimSubString = subString.trim();
+			if(trimSubString.length() > 0 ){
+     			weight = trimSubString.toInt();
+    	 		if(changeTracker()){
+              saveToTheEEPROM( lastWeightEEPROMMemoryValue, weight);
+    					webHook();
+    			};
 			}
   }
 
@@ -191,3 +220,54 @@ void processBuffer() {
 
 			Particle.publish("google-sheet-push", form, 60, PRIVATE);
 	}
+
+// conitnualy monitors for wifi connection, should restart after 20 failed attemps to connect
+  void connectionIssues(){
+    /* designed to automatically reconnect to cloud if data connection is lost*/
+    if(Particle.connected() == true){
+      /* do nothing */
+    }
+    else if (disconnectCounter > 20) {
+      /*saveToEEPROM();*/
+      System.reset();
+    } else {
+      Particle.disconnect();
+      delay(100);
+      Particle.connect();
+      disconnectCounter++;
+      saveToTheEEPROM(20, disconnectCounter);
+      Log.info("disconnectCounter just incrimented %i", disconnectCounter);
+    }
+  }
+
+  void saveToTheEEPROM( int address, uint16_t valueToSave){
+      int addr = address;
+      uint16_t value = valueToSave;
+      EEPROM.put(addr, value);
+  }
+
+  int getToTheEEPROM(int address){
+    int addr = address;
+    uint16_t value;
+    EEPROM.get(addr, value);
+    if(value == 0xFFFF) {
+      // EEPROM was empty -> initialize value
+      Log.info("EEPROM is empty");
+      return 0;
+    }
+    return value;
+
+  }
+
+  void tareFunction(){
+  	Serial1.write(tareSignal);
+  	if (tare){ tare = false;}
+  	else {tare = true;}
+
+  };
+  void zeroFunction(){
+  	Serial1.write(zeroSignal);
+  	if (tare){ tare = false;}
+  	else {tare = true;}
+
+  };
